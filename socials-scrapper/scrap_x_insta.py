@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 from playwright.async_api import async_playwright
 
-OUTPUT_PATH = Path("socials.json")
+OUTPUT_PATH = Path(__file__).resolve().parent.parent / "socials.json"
 
 URLS = {
   "x": "https://x.com/Bangk_official",

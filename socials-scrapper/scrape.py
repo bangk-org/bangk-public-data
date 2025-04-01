@@ -10,6 +10,9 @@ from bs4 import BeautifulSoup
 from crawl4ai import AsyncWebCrawler
 from config import urls, fallback
 from scrap_x_insta import scrape as scrape_x_insta  # Appel du script X + Insta
+from pathlib import Path
+
+OUTPUT_PATH = Path(__file__).resolve().parent.parent / "socials.json"
 
 load_dotenv()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
@@ -77,8 +80,8 @@ def ask_groq(text: str, platform: str) -> str:
 async def scrape():
   await scrape_x_insta()  # 1. Exécute le script Playwright pour X + Instagram
 
-  if os.path.exists("socials.json"):
-    with open("socials.json", "r") as f:
+  if OUTPUT_PATH.exists():
+    with open(OUTPUT_PATH, "r") as f:
       data = json.load(f)
   else:
     data = {}
@@ -97,7 +100,7 @@ async def scrape():
         data[name] = fallback[name]
       time.sleep(2)
 
-  with open("socials.json", "w") as f:
+  with open(OUTPUT_PATH, "w") as f:
     json.dump(data, f, indent=2)
 
 if __name__ == "__main__":

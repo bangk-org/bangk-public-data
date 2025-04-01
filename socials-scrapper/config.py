@@ -9,9 +9,9 @@ urls = {
 }
 
 fallback = {
-  "x": "1832",
+  "x": "1853",
   "instagram": "1749",
-  "facebook": "1632",
-  "linkedin": "3020",
-  "telegram": "4528"
+  "facebook": "1600",
+  "linkedin": "3195",
+  "telegram": "4522"
 }

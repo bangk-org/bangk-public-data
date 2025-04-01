@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 from bs4 import BeautifulSoup
 from crawl4ai import AsyncWebCrawler
 from config import urls, fallback
+from scrap_x_insta import scrape as scrape_x_insta  # Appel du script X + Insta
 
 load_dotenv()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
@@ -17,7 +18,7 @@ GROQ_MODEL = "llama3-70b-8192"
 def parse_k(value: str) -> int:
   if not value:
     return 0
-  raw = value.strip().lower().replace(',', '').replace(' ', '')
+  raw = value.strip().lower().replace(',', '.').replace(' ', '').replace('\u202f', '')
   try:
     if 'k' in raw:
       return int(float(raw.replace('k', '')) * 1_000)
@@ -29,22 +30,27 @@ def parse_k(value: str) -> int:
 
 def extract_text_for_llm(html: str) -> str:
   soup = BeautifulSoup(html, 'html.parser')
-  text = soup.get_text(separator='\n')
-  return text[:4000]  # garder court et efficace
+  [s.decompose() for s in soup(['script', 'style'])]
+  return soup.get_text(separator='\n')[:8000]
 
-@backoff.on_exception(backoff.expo, requests.exceptions.RequestException, max_tries=3)
-def ask_groq(text: str, platform: str) -> str:
-  prompt = f"""
-You are reading the text of {platform.upper()}.
+def generate_prompt(platform: str, text: str) -> str:
+  return f"""
+Extract ONLY the number of followers/subscribers/members from this public {platform.upper()} profile text.
 
-Give only the **number of followers or subscribers or members** of this account.
+Return only a number like:
+- 1200
+- 1.2k
+- 1M
 
-Examples valid: "1200", "12.3k", "2M"
-Don't give **anything else**.
+Do not include any extra text.
 
 Content:
 {text}
-"""
+""".strip()
+
+@backoff.on_exception(backoff.expo, requests.exceptions.RequestException, max_tries=3)
+def ask_groq(text: str, platform: str) -> str:
+  prompt = generate_prompt(platform, text)
 
   res = requests.post(
     "https://api.groq.com/openai/v1/chat/completions",
@@ -69,34 +75,30 @@ Content:
   return response
 
 async def scrape():
-  data = {}
+  await scrape_x_insta()  # 1. Exécute le script Playwright pour X + Instagram
 
+  if os.path.exists("socials.json"):
+    with open("socials.json", "r") as f:
+      data = json.load(f)
+  else:
+    data = {}
+
+  # 2. Complète avec crawl4ai pour les autres réseaux
   async with AsyncWebCrawler() as crawler:
-    for name, url in urls.items():
-      print(f"\n🕸️ Scraping {name.upper()} → {url}")
+    for name in ["facebook", "linkedin", "telegram"]:
       try:
-        result = await crawler.arun(url)
+        result = await crawler.arun(urls[name])
         html = result.html
         text = extract_text_for_llm(html)
         ai_response = ask_groq(text, name)
-
         count = parse_k(ai_response)
-        if count > 0:
-          data[name] = str(count)
-          print(f"✅ {name}: {count} (parsed from '{ai_response}')")
-        else:
-          raise ValueError("Unparseable AI result")
-
-      except Exception as e:
-        print(f"❌ {name}: fallback → {fallback[name]} ({e})")
+        data[name] = str(count) if count > 0 else fallback[name]
+      except Exception:
         data[name] = fallback[name]
-
-      time.sleep(2)  # limiter les appels Groq (éviter 429)
+      time.sleep(2)
 
   with open("socials.json", "w") as f:
     json.dump(data, f, indent=2)
-
-  print("\n✅ Done. socials.json updated.")
 
 if __name__ == "__main__":
   asyncio.run(scrape())
